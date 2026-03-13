@@ -1,0 +1,123 @@
+version: '3.8'
+
+services:
+  # ========================================
+  # BASE DE DONNÉES MYSQL
+  # ========================================
+  mysql:
+    image: mysql:8.0
+    container_name: unigom-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: Unigom2026Root
+      MYSQL_DATABASE: unigom_all
+      MYSQL_USER: unigom
+      MYSQL_PASSWORD: Unigom2026
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql-init:/docker-entrypoint-initdb.d
+    networks:
+      - unigom-network
+    command: >
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+
+  # ========================================
+  # BACKEND API FASTAPI
+  # ========================================
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: unigom-backend
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=mysql+pymysql://unigom:Unigom2026@mysql:3306/unigom_all?charset=utf8mb4
+      - DATABASE_PROD_URL=mysql+pymysql://rhunigom_sgad_unigom:ZgEjd47Qf3wRaDSStYeF7vG5eEVf5UjzIkX1nMbA3gTtkBMXKkoBCBwb2Z3euRYJPsC4SKJtk@mysql:3306/rhunigom__database_production?charset=utf8mb4
+      - DATABASE_PRESENCE_URL=mysql+pymysql://rhunigom_presence_users:ZPIK698rV9ay5GsiZym@mysql:3306/rhunigom_presence?charset=utf8mb4
+      - JWT_SECRET_KEY=super-secret-jwt-key-unigom-2026-production-32-chars-minimum
+      - JWT_ALGORITHM=HS256
+      - JWT_EXPIRE_MINUTES=1440
+      - ENVIRONMENT=production
+      - DEBUG=false
+      - EHOME_PORT=7660
+      - EHOME_SERVER_IP=95.216.18.174
+      - EHOME_DEVICE_ACCOUNT=Unigom
+      - EHOME_KEY=Unigom2026
+      - CORS_ORIGINS=http://95.216.18.174:3000,http://localhost:3000
+      - TIMEZONE=Africa/Lubumbashi
+      - CAMPUS_ID=GOMA
+      - DEVICE_ID=HIK001
+      - HIKVISION_IP=192.168.1.115
+      - HIKVISION_USER=admin
+      - HIKVISION_PASSWORD=Unigom2026
+      - HIKVISION_TIMEOUT=30
+      - MAX_FAILED_ATTEMPTS=5
+      - LOCKOUT_MINUTES=15
+    ports:
+      - "8000:8000"
+      - "7660:7660"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - mysql
+    networks:
+      - unigom-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ========================================
+  # FRONTEND REACT
+  # ========================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: unigom-frontend
+    restart: unless-stopped
+    environment:
+      - VITE_API_URL=http://95.216.18.174:8000
+      - VITE_WS_URL=ws://95.216.18.174:8000
+      - VITE_APP_NAME=UNIGOM Biométrie
+      - VITE_APP_VERSION=1.0.0
+      - VITE_ENVIRONMENT=production
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+    depends_on:
+      - backend
+    networks:
+      - unigom-network
+
+  # ========================================
+  # NGINX REVERSE PROXY
+  # ========================================
+  nginx:
+    image: nginx:alpine
+    container_name: unigom-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/logs:/var/log/nginx
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - unigom-network
+
+volumes:
+  mysql_data:
+
+networks:
+  unigom-network:
+    driver: bridge
